@@ -1,4 +1,6 @@
 import os
+import sys
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
@@ -6,10 +8,21 @@ import requests
 import streamlit as st
 
 
-API_URL = os.getenv(
-    "MACHINEGUARD_API_URL",
-    "http://127.0.0.1:8000",
+# Ensure the project root is available when Streamlit runs this file directly.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+
+from app.predictor import (
+    get_model_info as get_local_model_info,
+    predict_machine_failure,
 )
+
+
+# If no public API address is configured, the dashboard uses the model locally.
+API_URL = os.getenv("MACHINEGUARD_API_URL")
 
 
 st.set_page_config(
@@ -20,7 +33,10 @@ st.set_page_config(
 
 
 def get_model_info():
-    """Request model information from the FastAPI service."""
+    """Load model information locally or from a configured API."""
+
+    if not API_URL:
+        return get_local_model_info()
 
     response = requests.get(
         f"{API_URL}/model-info",
@@ -32,7 +48,10 @@ def get_model_info():
 
 
 def request_prediction(payload):
-    """Send machine measurements to the prediction API."""
+    """Generate a prediction locally or through a configured API."""
+
+    if not API_URL:
+        return predict_machine_failure(**payload)
 
     response = requests.post(
         f"{API_URL}/predict",
@@ -187,8 +206,10 @@ with prediction_tab:
         except requests.RequestException:
             st.error(
                 "The prediction service is unavailable. "
-                "Confirm that the FastAPI server is running."
+                "Confirm that the configured FastAPI server is running."
             )
+        except Exception as error:
+            st.error(f"Prediction failed: {error}")
 
 
 with performance_tab:
@@ -265,8 +286,10 @@ with performance_tab:
     except requests.RequestException:
         st.error(
             "Model information is unavailable. "
-            "Confirm that the FastAPI server is running."
+            "Confirm that the configured FastAPI server is running."
         )
+    except Exception as error:
+        st.error(f"Model information could not be loaded: {error}")
 
 
 with about_tab:
